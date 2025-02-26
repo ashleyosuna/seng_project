@@ -70,3 +70,5 @@ for post in posts:
                 data.append(post_data)
                 break
 
+    time.sleep(1)
+
