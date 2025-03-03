@@ -12,6 +12,8 @@ words_to_remove = list(stopwords.words('english'))
 to_remove_regex = r'\\n|\\|aita|“|”'
 lemmatizer = WordNetLemmatizer()
 
+# to limit amount of features we can adjust parameters min_df, max_features
+# https://scikit-learn.org/stable/modules/generated/sklearn.feature_extraction.text.TfidfVectorizer.html
 # modify min_df as needed
 vectorizer = TfidfVectorizer(min_df=0.45)
 

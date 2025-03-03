@@ -67,7 +67,7 @@ while len(posts) < NUM_SAMPLES:
 
     for post in res_posts:
         # ignore posts with no comments or that have been removed
-        if post['num_comments'] == None or post['num_comments'] == 0 or post['selftext'] == '[removed]':
+        if post['num_comments'] == None or post['num_comments'] == 0 or post['selftext'] == '[removed]' or post['title'].startswith('AITA Monthly Open Forum'):
             continue
         
         time.sleep(1)
