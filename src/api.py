@@ -54,6 +54,7 @@ def get_score(comments):
 search_params = {'subreddit': 'AmItheAsshole', 'after': START_DATE, 'limit': 1, 'sort': 'asc'}
 
 posts = []
+labels = []
 
 while len(posts) < NUM_SAMPLES:
     res = requests.get(BASE_URL + 'api/posts/search', params=search_params)
@@ -76,10 +77,9 @@ while len(posts) < NUM_SAMPLES:
         if score != -1:
             title = post['title']
             text = post['selftext']
-
-            data = {'title': title, 'text': text, 'label': score}
             
-            posts.append(data)
+            posts.append(title + ' ' + text)
+            labels.append(score)
 
     # avoid getting repeated posts
     search_params['after'] = res_posts[-1]['created_utc'] + 1
@@ -87,5 +87,3 @@ while len(posts) < NUM_SAMPLES:
 
 # for post in posts:
 #     print(post, '\n\n')
-
-
