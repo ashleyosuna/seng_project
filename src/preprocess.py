@@ -2,20 +2,16 @@ import nltk
 from nltk.corpus import stopwords
 import string
 import re
-from nltk.stem import WordNetLemmatizer
 from sklearn.feature_extraction.text import TfidfVectorizer
 import numpy as np
 import csv
 import api
 
+from nltk import word_tokenize          
+from nltk.stem import WordNetLemmatizer
+
 words_to_remove = list(stopwords.words('english'))
 to_remove_regex = r'\\n|\\|aita|“|”'
-lemmatizer = WordNetLemmatizer()
-
-# to limit amount of features we can adjust parameters min_df, max_features
-# https://scikit-learn.org/stable/modules/generated/sklearn.feature_extraction.text.TfidfVectorizer.html
-# modify min_df as needed
-vectorizer = TfidfVectorizer(min_df=0.45)
 
 def decontracted(phrase):
     # specific
@@ -33,31 +29,11 @@ def decontracted(phrase):
     phrase = re.sub(r"[’|']m", " am", phrase)
     return phrase
 
-def preprocess(sample):
-    text = sample.lower()
-
-    text = re.sub(to_remove_regex, '', text)
-
-    # removing punctuation
-    text = text.translate(str.maketrans("","", string.punctuation))
-
-    # expanding contractions
-    text = decontracted(text)
-
-    text = ' '.join([lemmatizer.lemmatize(word) for word in text.split() if word not in words_to_remove])
-
-    return text
-
-def vectorize(samples):
-    rows = []
-
-    rows = [preprocess(sample) for sample in samples]
-
-    X = vectorizer.fit_transform(rows)
-
-    print(X.shape)
-
-    return X.toarray()
+class LemmaTokenizer:
+    def __init__(self):
+        self.wnl = WordNetLemmatizer()
+    def __call__(self, doc):
+        return [self.wnl.lemmatize(t) for t in word_tokenize(doc)]
 
 def write_to_csv(rows):
     with open('data.csv', 'w') as f:
@@ -67,12 +43,21 @@ def write_to_csv(rows):
         
         write.writerows(rows)
 
+default_preprocessor = TfidfVectorizer().build_preprocessor()
+def custom_preprocessor(text):
+    text = decontracted(text)
+    text = text.translate(str.maketrans("","", string.punctuation))
+    text = default_preprocessor(text)
+    return text
+
 labels = api.labels
 samples = api.posts
 
 rows = []
 
-X = vectorize(samples)
+vectorizer = TfidfVectorizer(min_df=0.45, preprocessor=custom_preprocessor, stop_words="english", tokenizer=LemmaTokenizer())
+
+X = vectorizer.fit_transform(samples).toarray()
 
 for i in range(len(X)):
     row = [val for val in X[i]] + [labels[i]]

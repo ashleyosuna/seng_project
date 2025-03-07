@@ -6,7 +6,7 @@ BASE_URL = 'https://arctic-shift.photon-reddit.com/'
 # TODO: change to actual number
 NUM_SAMPLES = 10
 START_DATE = '2024-01-01'
-VOTE_REGEX = r'(YTA|NTA)'
+VOTE_REGEX = r'(YTA|NTA|ESH|NAH)'
 
 def get_comments(post_id):
     search_params = {'link_id': post_id}
@@ -33,25 +33,26 @@ def get_score(comments):
         
         ups = comment['ups']
 
-        if vote_match.group() == 'NTA':
+        if vote_match.group() == 'NTA' or vote_match.group() == "NAH":
             num_negative += 1 + ups
-        elif vote_match.group() == 'YTA':
+        elif vote_match.group() == 'YTA' or vote_match.group() == "ESH":
             num_positive += 1 + ups
 
-    if num_positive == 0 and num_negative == 0:
+    if num_positive < 1 or num_negative < 1:
         return -1
 
     score = num_positive / (num_negative + num_positive)
 
     # rounding to two decimal places
     score = (round(score * 100)) / 100
+    print(score)
     
     return score
 
 
 # SEEMS LIKE LIMIT IS 100
 # TODO: change to 100
-search_params = {'subreddit': 'AmItheAsshole', 'after': START_DATE, 'limit': 1, 'sort': 'asc'}
+search_params = {'subreddit': 'AmItheAsshole', 'after': START_DATE, 'limit': 10, 'sort': 'asc'}
 
 posts = []
 labels = []
@@ -67,7 +68,7 @@ while len(posts) < NUM_SAMPLES:
 
     for post in res_posts:
         # ignore posts with no comments or that have been removed
-        if post['num_comments'] == None or post['num_comments'] == 0 or post['selftext'] == '[removed]' or post['title'].startswith('AITA Monthly Open Forum'):
+        if post['num_comments'] == None or post['num_comments'] < 10 or post['selftext'] == '[removed]' or post['title'].startswith('AITA Monthly Open Forum'):
             continue
         
         time.sleep(1)
