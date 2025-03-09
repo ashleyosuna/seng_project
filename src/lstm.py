@@ -1,4 +1,4 @@
-# code taken from https://www.geeksforgeeks.org/long-short-term-memory-networks-using-pytorch/
+# code modified from https://www.geeksforgeeks.org/long-short-term-memory-networks-using-pytorch/
 
 import torch
 import torch.nn as nn
@@ -12,7 +12,7 @@ trainY = data_df.iloc[:, -1]
 
 trainX = torch.tensor(trainX.values, dtype=torch.float32)
 trainX = trainX.unsqueeze(-1)
-print(trainX.shape)
+# needs to be in shape [batch_size, sequence_length, input_size]
 
 trainY = torch.tensor(trainY.values, dtype=torch.float32)
 trainY = trainY.unsqueeze(-1)
@@ -27,7 +27,7 @@ class LSTMModel(nn.Module):
 
     def forward(self, x, h0=None, c0=None):
         '''
-        If the initial hidden state (h0) and initial cell state (c0) are not provided, 
+        If the initial hidden state/short term memory (h0) and initial cell state/long term memory (c0) are not provided, 
         they are initialized as zero tensors with shapes [layer_dim, batch_size, hidden_dim]
 
         Returns 
@@ -51,6 +51,7 @@ optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 num_epochs = 100 # epochs are number of rounds of training
 h0, c0 = None, None
 
+loss_values = []
 for epoch in range(num_epochs):
     model.train()
     optimizer.zero_grad()
@@ -64,6 +65,16 @@ for epoch in range(num_epochs):
     h0 = h0.detach()
     c0 = c0.detach()
 
+    loss_values.append(loss.item())
+
     # print loss value every 10 epochs to monitor model's performance
     if (epoch+1) % 10 == 0:
         print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}')
+
+# plotting the loss
+plt.plot(range(1, num_epochs + 1), loss_values, color='b', label='Training Loss')
+plt.xlabel('Epochs')
+plt.ylabel('Loss')
+plt.title('Model Training Loss over Epochs')
+plt.legend()
+plt.show()
