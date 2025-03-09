@@ -14,10 +14,9 @@ y = data_df.iloc[:, -1]
 trainX, testX, trainY, testY = train_test_split(X, y, test_size=0.2)
 
 trainX = torch.tensor(trainX.values, dtype=torch.float32)
-trainX = trainX.unsqueeze(-1)
+trainX = trainX.unsqueeze(-1) # reshaping so it has [batch_size, sequence_length, input_size], which is needed by the model
 testX = torch.tensor(testX.values, dtype=torch.float32)
 testX = testX.unsqueeze(-1) 
-# has shape [batch_size, sequence_length, input_size]
 
 trainY = torch.tensor(trainY.values, dtype=torch.float32)
 trainY = trainY.unsqueeze(-1)
@@ -69,8 +68,8 @@ for epoch in range(num_epochs):
     loss.backward() # backpropagating the error to update the weights
     optimizer.step()
 
-    h0 = h0.detach()
-    c0 = c0.detach()
+    h0 = h0.detach() # detach hidden state to avoid backpropagating through the entire history
+    c0 = c0.detach() # detach cell state to avoid backpropagating through the entire history
 
     loss_values.append(loss.item())
 
@@ -79,7 +78,8 @@ for epoch in range(num_epochs):
         print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}')
 
 
-test_outputs, _, _ = model(testX)
+model.eval()
+test_outputs, _, _ = model(testX) # only one forward pass, no backpropagation to update weights anymore
 mse_loss = nn.MSELoss()
 test_mse = mse_loss(test_outputs, testY)
 print(f"Mean Squared Error on the Test Set: {test_mse}")
