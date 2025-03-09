@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 
 data_df = pd.read_csv('processed.csv')
+data_df = data_df.sample(frac = 1) # shuffle rows
 
 X = data_df.iloc[:, :-1]
 y = data_df.iloc[:, -1]
