@@ -5,17 +5,24 @@ import torch.nn as nn
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
 
 data_df = pd.read_csv('processed.csv')
-trainX = data_df.iloc[:, :-1]
-trainY = data_df.iloc[:, -1]
+
+X = data_df.iloc[:, :-1]
+y = data_df.iloc[:, -1]
+trainX, testX, trainY, testY = train_test_split(X, y, test_size=0.2)
 
 trainX = torch.tensor(trainX.values, dtype=torch.float32)
 trainX = trainX.unsqueeze(-1)
-# needs to be in shape [batch_size, sequence_length, input_size]
+testX = torch.tensor(testX.values, dtype=torch.float32)
+testX = testX.unsqueeze(-1) 
+# has shape [batch_size, sequence_length, input_size]
 
 trainY = torch.tensor(trainY.values, dtype=torch.float32)
 trainY = trainY.unsqueeze(-1)
+testY = torch.tensor(testY.values, dtype=torch.float32)
+testY = testY.unsqueeze(-1)
 
 class LSTMModel(nn.Module):
     def __init__(self, input_dim, hidden_dim, layer_dim, output_dim):
@@ -71,7 +78,13 @@ for epoch in range(num_epochs):
     if (epoch+1) % 2 == 0:
         print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}')
 
-# plotting the loss
+
+test_outputs, _, _ = model(testX)
+mse_loss = nn.MSELoss()
+test_mse = mse_loss(test_outputs, testY)
+print(f"Mean Squared Error on the Test Set: {test_mse}")
+
+# plotting the training loss
 plt.plot(range(1, num_epochs + 1), loss_values, color='b', label='Training Loss')
 plt.xlabel('Epochs')
 plt.ylabel('Loss')
