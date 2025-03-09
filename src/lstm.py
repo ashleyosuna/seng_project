@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-data_df = pd.read_csv('data.csv')
+data_df = pd.read_csv('processed.csv')
 trainX = data_df.iloc[:, :-1]
 trainY = data_df.iloc[:, -1]
 
@@ -48,7 +48,7 @@ model = LSTMModel(input_dim=1, hidden_dim=100, layer_dim=1, output_dim=1)
 criterion = nn.MSELoss() # mean squared error for the loss function
 optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 
-num_epochs = 100 # epochs are number of rounds of training
+num_epochs = 20 # epochs are number of rounds of training
 h0, c0 = None, None
 
 loss_values = []
@@ -67,8 +67,8 @@ for epoch in range(num_epochs):
 
     loss_values.append(loss.item())
 
-    # print loss value every 10 epochs to monitor model's performance
-    if (epoch+1) % 10 == 0:
+    # print loss value every 2 epochs to monitor model's performance
+    if (epoch+1) % 2 == 0:
         print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}')
 
 # plotting the loss
