@@ -95,7 +95,7 @@ try:
     for i in range(len(posts)):
         csv_rows.append([posts[i], labels[i]])
 
-    utils.write_to_csv(csv_rows)
+    utils.write_to_csv(csv_rows, 'data.csv')
     print('num of posts retrieved', len(posts))
 
 except:
@@ -103,7 +103,7 @@ except:
     csv_rows = []
     for i in range(len(posts)):
         csv_rows.append([posts[i], labels[i]])
-    utils.write_to_csv(csv_rows)
+    utils.write_to_csv(csv_rows, 'data.csv')
     print('num of posts retrieved', len(posts))
 
 # for post in posts:
