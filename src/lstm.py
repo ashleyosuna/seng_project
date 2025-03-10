@@ -18,8 +18,7 @@ testYcpy = testY
 trainX = torch.tensor(trainX.values, dtype=torch.float32)
 trainX = trainX.unsqueeze(1) # reshaping so it has [batch_size, sequence_length, input_size], which is needed by the model
 testX = torch.tensor(testX.values, dtype=torch.float32)
-testX = testX.unsqueeze(1) 
-print(trainX.size())
+testX = testX.unsqueeze(1)
 
 trainY = torch.tensor(trainY.values, dtype=torch.float32)
 trainY = trainY.unsqueeze(-1)
@@ -61,12 +60,16 @@ num_epochs = 100 # epochs are number of rounds of training
 h0, c0 = None, None
 
 loss_values = []
+test_loss = []
 for epoch in range(num_epochs):
     model.train()
     optimizer.zero_grad()
 
     outputs, h0, c0 = model(trainX, h0, c0)
     loss = criterion(outputs, trainY)
+    test_outputs, _, _ = model(testX)
+    test_l = criterion(test_outputs, testY)
+    test_loss.append(test_l.item())
     loss.backward() # backpropagating the error to update the weights
     optimizer.step()
 
@@ -99,6 +102,7 @@ plt.close()
 
 # plotting the training loss
 plt.plot(range(1, num_epochs + 1), loss_values, color='b', label='Training Loss')
+plt.plot(range(1, num_epochs + 1), test_loss, color='r', label='Test Loss')
 plt.xlabel('Epochs')
 plt.ylabel('Loss')
 plt.title('Model Training Loss over Epochs')
