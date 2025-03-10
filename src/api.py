@@ -1,6 +1,7 @@
 import requests
 import re
 import time
+import csv
 
 BASE_URL = 'https://arctic-shift.photon-reddit.com/'
 # TODO: change to actual number
@@ -84,7 +85,22 @@ while len(posts) < NUM_SAMPLES:
 
     # avoid getting repeated posts
     search_params['after'] = res_posts[-1]['created_utc'] + 1
-    time.sleep(1)
+
+"""
+Writes data to csv file.
+"""
+def write_to_csv(filename, X, y):
+    with open(filename, 'w', newline="", encoding="utf-8") as f:
+     
+        # using csv.writer method from CSV package
+        write = csv.writer(f)
+
+        for i in range(len(X)):
+            X[i] = X[i].replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
+            row = [X[i]] + [y[i]]
+            write.writerow(row)
+
+write_to_csv("post_data.csv", posts, labels)
 
 # for post in posts:
 #     print(post, '\n\n')
