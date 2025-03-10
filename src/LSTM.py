@@ -34,10 +34,13 @@ def read_from_csv(filename):
 
     return X, y
 
-samples, labels = read_from_csv("post_data.csv")
+samples, labels = read_from_csv("data.csv")
 
-# Initialize Lemmatizer
-lemmatizer = WordNetLemmatizer()
+"""
+Lemmatization can hurt an LSTM model! I will leave it just in case.
+"""
+# # Initialize Lemmatizer
+# lemmatizer = WordNetLemmatizer()
 
 """
 Breaks common contracted words into their constituent parts.
@@ -150,8 +153,9 @@ padded_post_indices = [pad_sequence(post, max_length) for post in post_indices]
 embedding_dim = 100  # (or 50, 200, 300, depending on your GloVe file)
 vocab_size = len(vocab)
 
+# TODO Look into how to handle missing GloVe words
 # Initialize embedding matrix with random numbers for unknown words
-embedding_matrix = np.zeros((vocab_size + 1, embedding_dim))
+embedding_matrix = np.random.uniform(-0.1, 0.1, (vocab_size + 1, embedding_dim))
 
 # Load GloVe embeddings into the matrix
 glove_path = "glove.6B.100d.txt"  # Change depending on your GloVe version
@@ -181,7 +185,6 @@ X_train, X_test, y_train, y_test = train_test_split(padded_post_indices, labels,
 X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=0.2, random_state=42)
 
 # Convert the data into PyTorch tensors
-# Convert the data into PyTorch tensors
 X_train_tensor = torch.LongTensor(X_train)  # Shape: (num_train_samples, max_length)
 y_train_tensor = torch.FloatTensor(y_train)  # Shape: (num_train_samples,)
 X_val_tensor = torch.LongTensor(X_val)  # Shape: (num_test_samples, max_length)
@@ -190,7 +193,6 @@ X_test_tensor = torch.LongTensor(X_test)  # Shape: (num_test_samples, max_length
 y_test_tensor = torch.FloatTensor(y_test)  # Shape: (num_test_samples,)
 
 # Create a TensorDataset and DataLoader for batching
-# Step 2: Create DataLoaders for both training and test data
 train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
 val_dataset = TensorDataset(X_val_tensor, y_val_tensor)
 test_dataset = TensorDataset(X_test_tensor, y_test_tensor)
@@ -249,7 +251,7 @@ model = LSTMModel(vocab_size=vocab_size, embedding_dim=embedding_dim, hidden_dim
 criterion = nn.MSELoss()  # Mean Squared Error for regression
 optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
-num_epochs = 10  # Adjust based on your training needs
+num_epochs = 5  # Adjust based on your training needs
 
 for epoch in range(num_epochs):
     print(f"Epoch [{epoch+1}/{num_epochs}]")
@@ -274,8 +276,9 @@ for epoch in range(num_epochs):
     # Print training statistics every epoch
     print(f"Training Loss: {running_loss / len(train_loader):.4f}")
 
-    # Evaluate on test data
-    model.eval()  # Set model to evaluation mode
+    #TODO Actually try to get the validation error properly - I don't think this is correct
+   # Compute validation loss
+    model.eval()
     val_loss = 0.0
     with torch.no_grad():
         for inputs, labels in val_loader:
@@ -283,4 +286,5 @@ for epoch in range(num_epochs):
             loss = criterion(outputs.squeeze(), labels)
             val_loss += loss.item()
 
-    print(f"Validation Loss: {val_loss / len(val_loader):.4f}")
+    val_loss /= len(val_loader)
+    print(f"Validation Loss: {val_loss:.4f}")
