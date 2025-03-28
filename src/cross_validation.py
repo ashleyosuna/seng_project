@@ -9,10 +9,6 @@ def split_into_k_groups(training_data, k):
 
     samples_per_group = math.ceil(sample_number / k )
 
-    add_remaining = 0
-    if sample_number % k != 0:
-        add_remaining = 1
-
     X_groups = []
 
     for i in range(k):
