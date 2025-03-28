@@ -18,6 +18,3 @@ data = pd.read_csv(data_file, header=None).to_numpy()
 num_samples = len(data)
 training_data = data[:round(num_samples * 0.8)]
 test_data = data[round(num_samples * 0.8):]
-
-training_data = aitaDataset(training_data)
-test_data = aitaDataset(test_data)
