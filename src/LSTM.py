@@ -20,8 +20,7 @@ nltk.download('punkt_tab')
 nltk.download('stopwords')
 nltk.download('wordnet')
 
-def read_from_csv(filename):
-    X, y = [], []
+def read_from_csv(filename, X=[], y=[]):
 
     with open(filename, 'r', newline="", encoding="utf-8") as f:
         reader = csv.reader(f)
@@ -34,7 +33,10 @@ def read_from_csv(filename):
 
     return X, y
 
-samples, labels = read_from_csv("data.csv")
+samples, labels = read_from_csv("data/data.csv")
+samples, labels = read_from_csv("data/data_feb_2024.csv", samples, labels)
+samples, labels = read_from_csv("data/data_apr_2024.csv", samples, labels)
+
 
 """
 Lemmatization can hurt an LSTM model! I will leave it just in case.
