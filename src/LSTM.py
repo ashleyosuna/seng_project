@@ -14,6 +14,7 @@ from sklearn.model_selection import train_test_split
 
 
 
+
 # Download necessary resources from nltk
 nltk.download('punkt')
 nltk.download('punkt_tab')
@@ -61,6 +62,9 @@ def decontracted(text):
     text = re.sub(r"[’|']t", " not", text)
     text = re.sub(r"[’|']ve", " have", text)
     text = re.sub(r"[’|']m", " am", text)
+
+    text = re.sub(r'\bm(\d+)\b', r'male \1', text, flags=re.IGNORECASE)  # Replace 'm<number>'
+    text = re.sub(r'\bf(\d+)\b', r'female \1', text, flags=re.IGNORECASE)  # Replace 'f<number>'
     return text
 
 """
@@ -79,8 +83,8 @@ def clean_text(text):
     # Remove unwanted characters
     text = re.sub(r'[^a-zA-Z0-9\s]', '', text)
 
-    # Remove numbers
-    text = re.sub(r'\d+', '', text)
+    # # Remove numbers
+    # text = re.sub(r'\d+', '', text)
     
     return text
 
@@ -94,9 +98,9 @@ def lemmatize_text(text):
     # Tokenize
     tokens = word_tokenize(text)
     
-    # Remove stopwords
-    stop_words = set(stopwords.words('english'))
-    tokens = [word for word in tokens if word not in stop_words]
+    # # Remove stopwords
+    # stop_words = set(stopwords.words('english'))
+    # tokens = [word for word in tokens if word not in stop_words]
     
     # # Lemmatize each token
     # lemmatized_tokens = [lemmatizer.lemmatize(token) for token in tokens]
@@ -152,15 +156,14 @@ post_indices = [vocab_indices(vocab, post) for post in tokenized_posts]
 max_length = max(len(sublist) for sublist in post_indices)
 padded_post_indices = [pad_sequence(post, max_length) for post in post_indices]
 
-embedding_dim = 100  # (or 50, 200, 300, depending on your GloVe file)
+embedding_dim = 100  # (or 50, 200, 300, depending on GloVe file)
 vocab_size = len(vocab)
-
-# TODO Look into how to handle missing GloVe words
-# Initialize embedding matrix with random numbers for unknown words
-embedding_matrix = np.random.uniform(-0.1, 0.1, (vocab_size + 1, embedding_dim))
 
 # Load GloVe embeddings into the matrix
 glove_path = "glove.6B.100d.txt"  # Change depending on your GloVe version
+
+# Initialize embedding matrix with random numbers for unknown words
+embedding_matrix = np.random.uniform(-0.1, 0.1, (vocab_size + 1, embedding_dim))
 
 # Create a dictionary to hold the GloVe embeddings
 glove_dict = {}
@@ -184,29 +187,24 @@ print(f"Words not found in GloVe: {not_found_count}")
 
 # Split data into training, validation, and test sets
 X_train, X_test, y_train, y_test = train_test_split(padded_post_indices, labels, test_size=0.2, random_state=42)
-X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=0.2, random_state=42)
 
 # Convert the data into PyTorch tensors
 X_train_tensor = torch.LongTensor(X_train)  # Shape: (num_train_samples, max_length)
 y_train_tensor = torch.FloatTensor(y_train)  # Shape: (num_train_samples,)
-X_val_tensor = torch.LongTensor(X_val)  # Shape: (num_test_samples, max_length)
-y_val_tensor = torch.FloatTensor(y_val)  # Shape: (num_test_samples,)
 X_test_tensor = torch.LongTensor(X_test)  # Shape: (num_test_samples, max_length)
 y_test_tensor = torch.FloatTensor(y_test)  # Shape: (num_test_samples,)
 
 # Create a TensorDataset and DataLoader for batching
 train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
-val_dataset = TensorDataset(X_val_tensor, y_val_tensor)
 test_dataset = TensorDataset(X_test_tensor, y_test_tensor)
 
 batch_size = 32  # You can adjust this depending on your memory
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True)
 test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
 
 # LSTM Model Definition
 class LSTMModel(nn.Module):
-    def __init__(self, vocab_size, embedding_dim, hidden_dim, output_dim, embedding_matrix):
+    def __init__(self, vocab_size, embedding_dim, hidden_dim, output_dim, embedding_matrix, num_layers=1):
         super(LSTMModel, self).__init__()
         
         # Embedding Layer (pre-trained)
@@ -219,7 +217,7 @@ class LSTMModel(nn.Module):
         self.embedding.weight.requires_grad = False  # Set to True if you want to fine-tune embeddings
         
         # LSTM Layer
-        self.lstm = nn.LSTM(input_size=embedding_dim, hidden_size=hidden_dim, batch_first=True)
+        self.lstm = nn.LSTM(input_size=embedding_dim, hidden_size=hidden_dim, num_layers=num_layers, batch_first=True)
         
         # Fully connected layer (output layer)
         self.fc = nn.Linear(hidden_dim, output_dim)
@@ -241,7 +239,6 @@ class LSTMModel(nn.Module):
 
 # Hyperparameters
 vocab_size = len(vocab) + 1  # +1 for padding token
-embedding_dim = 100  # Dimensions of GloVe embeddings
 hidden_dim = 64  # Hidden state size for LSTM
 output_dim = 1  # For regression, output is a single continuous value
 learning_rate = 0.001
@@ -274,19 +271,27 @@ for epoch in range(num_epochs):
         # Backward pass and optimization
         loss.backward()
         optimizer.step()
-    
-    # Print training statistics every epoch
-    print(f"Training Loss: {running_loss / len(train_loader):.4f}")
 
-    #TODO Actually try to get the validation error properly - I don't think this is correct
-   # Compute validation loss
-    model.eval()
-    val_loss = 0.0
-    with torch.no_grad():
-        for inputs, labels in val_loader:
-            outputs = model(inputs)
-            loss = criterion(outputs.squeeze(), labels)
-            val_loss += loss.item()
+# Training Loss
+loss_fn = nn.MSELoss()
+model.eval()
+train_loss = 0.0
+with torch.no_grad():
+    for inputs, labels in train_loader:
+        y_train_pred = model(inputs)  # Forward pass
+        loss = loss_fn(y_train_pred.squeeze(), labels)  # Compute loss
+        train_loss += loss.item()
 
-    val_loss /= len(val_loader)
-    print(f"Validation Loss: {val_loss:.4f}")
+train_loss /= len(train_loader)
+print(f"Training Loss: {train_loss:.4f}")
+
+# Test Loss
+test_loss = 0.0
+with torch.no_grad():
+    for inputs, labels in test_loader:
+        y_test_pred = model(inputs)  # Forward pass
+        loss = loss_fn(y_test_pred.squeeze(), labels)  # Compute loss
+        test_loss += loss.item()
+
+test_loss /= len(train_loader)
+print(f"Test Loss: {test_loss:.4f}")
