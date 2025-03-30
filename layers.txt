@@ -1,0 +1,12 @@
+Dim: 16, Layers: 1, Training Loss: 0.0935, Test Loss: 0.0222
+Dim: 16, Layers: 2, Training Loss: 0.0928, Test Loss: 0.0221
+Dim: 16, Layers: 3, Training Loss: 0.0935, Test Loss: 0.0221
+Dim: 32, Layers: 1, Training Loss: 0.0947, Test Loss: 0.0226
+Dim: 32, Layers: 2, Training Loss: 0.0933, Test Loss: 0.0223
+Dim: 32, Layers: 3, Training Loss: 0.0935, Test Loss: 0.0223
+Dim: 64, Layers: 1, Training Loss: 0.0954, Test Loss: 0.0230
+Dim: 64, Layers: 2, Training Loss: 0.0940, Test Loss: 0.0222
+Dim: 64, Layers: 3, Training Loss: 0.0969, Test Loss: 0.0227
+Dim: 128, Layers: 1, Training Loss: 0.0962, Test Loss: 0.0225
+Dim: 128, Layers: 2, Training Loss: 0.0944, Test Loss: 0.0223
+Dim: 128, Layers: 3, Training Loss: 0.0942, Test Loss: 0.0225

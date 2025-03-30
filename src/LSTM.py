@@ -237,61 +237,73 @@ class LSTMModel(nn.Module):
         
         return output
 
-# Hyperparameters
-vocab_size = len(vocab) + 1  # +1 for padding token
-hidden_dim = 64  # Hidden state size for LSTM
-output_dim = 1  # For regression, output is a single continuous value
-learning_rate = 0.001
+hidden_dims = [16, 32, 64, 128, 256]
+layers = [1,2,3]
 
-# Initialize the LSTM model
-model = LSTMModel(vocab_size=vocab_size, embedding_dim=embedding_dim, hidden_dim=hidden_dim, output_dim=output_dim, embedding_matrix=embedding_matrix)
+for dim in hidden_dims:
+    for layer in layers:
+        # Hyperparameters
+        vocab_size = len(vocab) + 1  # +1 for padding token
+        hidden_dim = dim  # Hidden state size for LSTM
+        num_layers = layer
+        output_dim = 1  # For regression, output is a single continuous value
+        learning_rate = 0.001
 
-# Loss function and optimizer
-criterion = nn.MSELoss()  # Mean Squared Error for regression
-optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+        # Initialize the LSTM model
+        model = LSTMModel(vocab_size=vocab_size, embedding_dim=embedding_dim, hidden_dim=hidden_dim, num_layers=num_layers, output_dim=output_dim, embedding_matrix=embedding_matrix)
 
-num_epochs = 5  # Adjust based on your training needs
+        # Loss function and optimizer
+        criterion = nn.MSELoss()  # Mean Squared Error for regression
+        optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
-for epoch in range(num_epochs):
-    print(f"Epoch [{epoch+1}/{num_epochs}]")
-    model.train()  # Set model to training mode
-    running_loss = 0.0
-    
-    # Training phase
-    for batch_idx, (inputs, labels) in enumerate(train_loader):
-        optimizer.zero_grad()  # Zero out previous gradients
+        num_epochs = 5  # Adjust based on your training needs
+
+        for epoch in range(num_epochs):
+            print(f"Epoch [{epoch+1}/{num_epochs}]")
+            model.train()  # Set model to training mode
+            running_loss = 0.0
+            
+            # Training phase
+            for batch_idx, (inputs, labels) in enumerate(train_loader):
+                optimizer.zero_grad()  # Zero out previous gradients
+                
+                # Forward pass
+                outputs = model(inputs)  # Shape: (batch_size, 1)
+                
+                # Compute the loss
+                loss = criterion(outputs.squeeze(), labels)  # Squeeze outputs to (batch_size,)
+                running_loss += loss.item()
+                
+                # Backward pass and optimization
+                loss.backward()
+                optimizer.step()
         
-        # Forward pass
-        outputs = model(inputs)  # Shape: (batch_size, 1)
         
-        # Compute the loss
-        loss = criterion(outputs.squeeze(), labels)  # Squeeze outputs to (batch_size,)
-        running_loss += loss.item()
-        
-        # Backward pass and optimization
-        loss.backward()
-        optimizer.step()
+        print(f"Dim: {dim}, Layers: {num_layers}")
 
-# Training Loss
-loss_fn = nn.MSELoss()
-model.eval()
-train_loss = 0.0
-with torch.no_grad():
-    for inputs, labels in train_loader:
-        y_train_pred = model(inputs)  # Forward pass
-        loss = loss_fn(y_train_pred.squeeze(), labels)  # Compute loss
-        train_loss += loss.item()
+        # Training Loss
+        loss_fn = nn.MSELoss()
+        model.eval()
+        train_loss = 0.0
+        with torch.no_grad():
+            for inputs, labels in train_loader:
+                y_train_pred = model(inputs)  # Forward pass
+                loss = loss_fn(y_train_pred.squeeze(), labels)  # Compute loss
+                train_loss += loss.item()
 
-train_loss /= len(train_loader)
-print(f"Training Loss: {train_loss:.4f}")
+        train_loss /= len(train_loader)
+        print(f"Training Loss: {train_loss:.4f}")
 
-# Test Loss
-test_loss = 0.0
-with torch.no_grad():
-    for inputs, labels in test_loader:
-        y_test_pred = model(inputs)  # Forward pass
-        loss = loss_fn(y_test_pred.squeeze(), labels)  # Compute loss
-        test_loss += loss.item()
+        # Test Loss
+        test_loss = 0.0
+        with torch.no_grad():
+            for inputs, labels in test_loader:
+                y_test_pred = model(inputs)  # Forward pass
+                loss = loss_fn(y_test_pred.squeeze(), labels)  # Compute loss
+                test_loss += loss.item()
 
-test_loss /= len(train_loader)
-print(f"Test Loss: {test_loss:.4f}")
+        test_loss /= len(train_loader)
+        print(f"Test Loss: {test_loss:.4f}")
+
+        with open("layers.txt", 'a') as f:
+            f.write(f"Dim: {dim}, Layers: {num_layers}, Training Loss: {train_loss:.4f}, Test Loss: {test_loss:.4f}\n")
