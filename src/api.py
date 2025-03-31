@@ -1,13 +1,16 @@
 import requests
 import re
 import time
-import utils
+import csv
+from datetime import datetime, timedelta
+import urllib.parse
+
 
 BASE_URL = 'https://arctic-shift.photon-reddit.com/'
-# TODO: change to actual number
-NUM_SAMPLES = 1000
-START_DATE = '2024-01-01'
 VOTE_REGEX = r'(YTA|NTA|ESH|NAH)'
+START_DATE = datetime(2022, 6, 25)
+END_DATE = datetime(2024, 12, 31)
+CSV_FILENAME = f"{START_DATE.strftime('%Y-%m-%d')}_to_{END_DATE.strftime('%Y-%m-%d')}.csv"
 
 def get_comments(post_id):
     search_params = {'link_id': post_id}
@@ -46,65 +49,64 @@ def get_score(comments):
 
     # rounding to two decimal places
     score = (round(score * 100)) / 100
-    print(score)
-    
     return score
 
+# Function to write posts to a CSV file after each iteration
+def write_to_csv(data, filename):
+    with open(filename, mode='a', newline='', encoding='utf-8') as file:
+        writer = csv.writer(file)
+        writer.writerows(data)
 
-# SEEMS LIKE LIMIT IS 100
-# TODO: change to 100
-search_params = {'subreddit': 'AmItheAsshole', 'after': START_DATE, 'limit': 100, 'sort': 'asc'}
+# Loop through dates, each day
+current_date = START_DATE
+while current_date <= END_DATE:
+    # Convert the date to ISO 8601 format
+    start_date_iso = current_date.strftime('%Y-%m-%dT00:00')
+    end_date_iso = (current_date - timedelta(minutes=1) + timedelta(days=1)).strftime('%Y-%m-%dT%H:%M')
 
-posts = []
-labels = []
-last_date = None
+    search_params = {
+        'subreddit': 'AmItheAsshole',
+        'after': start_date_iso,
+        'before': end_date_iso,
+        'limit': 100,
+        'sort': 'asc'
+    }
 
-try:
-    while len(posts) < NUM_SAMPLES:
+    posts = []
+    labels = []
+
+    try:
+        # Get posts for the current day
         res = requests.get(BASE_URL + 'api/posts/search', params=search_params)
 
         if res.status_code != 200:
             print('Error retrieving posts')
-            exit(0)
+            continue
 
         res_posts = res.json()['data']
 
         for post in res_posts:
-            # ignore posts with no comments or that have been removed
-            if post['num_comments'] == None or post['num_comments'] < 10 or post['selftext'] == '[removed]' or post['title'].startswith('AITA Monthly Open Forum'):
+            # Ignore posts with no comments, removed posts, or less than 10 comments
+            if post['num_comments'] is None or post['num_comments'] < 10 or post['selftext'] == '[removed]' or post['title'].startswith('AITA Monthly Open Forum'):
                 continue
-            
-            time.sleep(1)
+
             comments = get_comments(post['id'])
             score = get_score(comments)
 
             if score != -1:
                 title = post['title']
                 text = post['selftext']
-                
-                posts.append(title + ' ' + text)
-                labels.append(score)
 
-        print('date of last post retrieved', res_posts[-1]['created_utc'])
-        last_date = res_posts[-1]['created_utc']
+                # Append post and score to lists
+                posts.append([title + ' ' + text, score])
 
-        # avoid getting repeated posts
-        search_params['after'] = last_date + 1
-        time.sleep(1)
-    csv_rows = []
-    for i in range(len(posts)):
-        csv_rows.append([posts[i], labels[i]])
+        # Write the posts and labels to CSV after each day iteration
+        write_to_csv(posts, CSV_FILENAME)
+        print(f"Posts from {start_date_iso} to {end_date_iso} written to CSV.")
 
-    utils.write_to_csv(csv_rows, 'data.csv')
-    print('num of posts retrieved', len(posts))
+        # Move to the next day
+        current_date += timedelta(days=1)
 
-except:
-    print('an error occurred: last date', last_date)
-    csv_rows = []
-    for i in range(len(posts)):
-        csv_rows.append([posts[i], labels[i]])
-    utils.write_to_csv(csv_rows, 'data.csv')
-    print('num of posts retrieved', len(posts))
-
-# for post in posts:
-#     print(post, '\n\n')
+    except Exception as e:
+        print(f'An error occurred: {e}')
+        continue

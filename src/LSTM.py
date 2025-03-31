@@ -8,8 +8,11 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader, TensorDataset, Subset
 from sklearn.model_selection import train_test_split
+import os
+from sklearn.model_selection import KFold
+
 
 
 
@@ -34,9 +37,21 @@ def read_from_csv(filename, X=[], y=[]):
 
     return X, y
 
-samples, labels = read_from_csv("data/data.csv")
-samples, labels = read_from_csv("data/data_feb_2024.csv", samples, labels)
-samples, labels = read_from_csv("data/data_apr_2024.csv", samples, labels)
+# Specify the directory path
+directory = 'data/'
+
+samples = []
+labels = []
+
+# Get all file names inside the directory
+file_paths = [os.path.join(directory, f) for f in os.listdir(directory) if os.path.isfile(os.path.join(directory, f))]
+for file in file_paths:
+    samples, labels = read_from_csv(file, samples, labels)
+
+
+# Limit the size to the first 10,000 rows
+samples = samples[:10000]
+labels = labels[:10000]
 
 
 """
@@ -82,6 +97,9 @@ def clean_text(text):
     
     # Remove unwanted characters
     text = re.sub(r'[^a-zA-Z0-9\s]', '', text)
+
+    # Remove zero-width characters
+    text = re.sub(r'[\u200B\u200C\u200D\uFEFF]', '', text)
 
     # # Remove numbers
     # text = re.sub(r'\d+', '', text)
@@ -198,14 +216,21 @@ y_test_tensor = torch.FloatTensor(y_test)  # Shape: (num_test_samples,)
 train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
 test_dataset = TensorDataset(X_test_tensor, y_test_tensor)
 
-batch_size = 32  # You can adjust this depending on your memory
+batch_size = 128  # You can adjust this depending on your memory
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
 
 # LSTM Model Definition
 class LSTMModel(nn.Module):
-    def __init__(self, vocab_size, embedding_dim, hidden_dim, output_dim, embedding_matrix, num_layers=1):
+    def __init__(self, vocab_size, embedding_dim, hidden_dim, output_dim, embedding_matrix, num_layers=1, dropout_prob=0):
         super(LSTMModel, self).__init__()
+
+        self.vocab_size = vocab_size
+        self.embedding_dim = embedding_dim
+        self.hidden_dim = hidden_dim
+        self.output_dim = output_dim
+        self.num_layers = num_layers
+        self.dropout = dropout_prob
         
         # Embedding Layer (pre-trained)
         self.embedding = nn.Embedding(vocab_size, embedding_dim)
@@ -217,7 +242,7 @@ class LSTMModel(nn.Module):
         self.embedding.weight.requires_grad = False  # Set to True if you want to fine-tune embeddings
         
         # LSTM Layer
-        self.lstm = nn.LSTM(input_size=embedding_dim, hidden_size=hidden_dim, num_layers=num_layers, batch_first=True)
+        self.lstm = nn.LSTM(input_size=embedding_dim, hidden_size=hidden_dim, num_layers=num_layers, dropout=dropout_prob, batch_first=True, bidirectional=True)
         
         # Fully connected layer (output layer)
         self.fc = nn.Linear(hidden_dim, output_dim)
@@ -237,73 +262,143 @@ class LSTMModel(nn.Module):
         
         return output
 
-hidden_dims = [16, 32, 64, 128, 256]
-layers = [1,2,3]
+k = 5
+kfold = KFold(n_splits=k)
+
+models = []
+train_losses = []
+val_losses = []
+
+hidden_dims = [32, 64, 128]
+layers = [2, 3]
+dropout_list = [0.2, 0.4]
+
+patience = 5
 
 for dim in hidden_dims:
     for layer in layers:
-        # Hyperparameters
-        vocab_size = len(vocab) + 1  # +1 for padding token
-        hidden_dim = dim  # Hidden state size for LSTM
-        num_layers = layer
-        output_dim = 1  # For regression, output is a single continuous value
-        learning_rate = 0.001
+        for drop in dropout_list:
+            # Hyperparameters
+            vocab_size = len(vocab) + 1  # +1 for padding token
+            hidden_dim = dim  # Hidden state size for LSTM
+            num_layers = layer
+            output_dim = 1  # For regression, output is a single continuous value
+            learning_rate = 0.001
+            dropout = drop
 
-        # Initialize the LSTM model
-        model = LSTMModel(vocab_size=vocab_size, embedding_dim=embedding_dim, hidden_dim=hidden_dim, num_layers=num_layers, output_dim=output_dim, embedding_matrix=embedding_matrix)
+            # Initialize the LSTM model
+            model = LSTMModel(vocab_size=vocab_size, embedding_dim=embedding_dim, hidden_dim=hidden_dim, num_layers=num_layers, output_dim=output_dim, embedding_matrix=embedding_matrix, dropout_prob=dropout)
 
-        # Loss function and optimizer
-        criterion = nn.MSELoss()  # Mean Squared Error for regression
-        optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+            # Loss function and optimizer
+            criterion = nn.MSELoss()  # Mean Squared Error for regression
+            optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
-        num_epochs = 5  # Adjust based on your training needs
+            num_epochs = 50 
 
-        for epoch in range(num_epochs):
-            print(f"Epoch [{epoch+1}/{num_epochs}]")
-            model.train()  # Set model to training mode
-            running_loss = 0.0
-            
-            # Training phase
-            for batch_idx, (inputs, labels) in enumerate(train_loader):
-                optimizer.zero_grad()  # Zero out previous gradients
+            total_train_loss = 0
+            total_val_loss = 0
+
+            for fold, (train_idx, val_idx) in enumerate(kfold.split(train_dataset)):
+                print(f"Fold {fold+1}/{k}")
                 
-                # Forward pass
-                outputs = model(inputs)  # Shape: (batch_size, 1)
+                # Create data loaders for training and validation
+                train_subset = Subset(train_dataset, train_idx)
+                val_subset = Subset(train_dataset, val_idx)
+                train_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=False)
+                val_loader = DataLoader(val_subset, batch_size=batch_size, shuffle=False)
+
+                fold_train_loss = 0.0
+                fold_val_loss = 0.0
+                best_val_loss = float('inf')
+                counter = 0
+
+                for epoch in range(num_epochs):
+                    print(f"Epoch [{epoch+1}/{num_epochs}]")
+                    model.train()  # Set model to training mode
+                    running_loss = 0.0
+                    
+                    # Training phase
+                    for batch_idx, (inputs, labels) in enumerate(train_loader):
+                        optimizer.zero_grad()  # Zero out previous gradients
+                        
+                        # Forward pass
+                        outputs = model(inputs)  # Shape: (batch_size, 1)
+                        
+                        # Compute the loss
+                        loss = criterion(outputs.squeeze(), labels)  # Squeeze outputs to (batch_size,)
+                        running_loss += loss.item()
+                        
+                        # Backward pass and optimization
+                        loss.backward()
+                        optimizer.step()
+
+                    # Validation Loss
+                    val_loss = 0.0
+                    with torch.no_grad():
+                        for inputs, labels in val_loader:
+                            y_val_pred = model(inputs)  # Forward pass
+                            loss = criterion(y_val_pred.squeeze(), labels)  # Compute loss
+                            val_loss += loss.item()
+                    val_loss /= len(val_loader)
                 
-                # Compute the loss
-                loss = criterion(outputs.squeeze(), labels)  # Squeeze outputs to (batch_size,)
-                running_loss += loss.item()
-                
-                # Backward pass and optimization
-                loss.backward()
-                optimizer.step()
-        
-        
-        print(f"Dim: {dim}, Layers: {num_layers}")
+                    # Check for early stopping
+                    if val_loss < best_val_loss:
+                        best_val_loss = val_loss
+                        counter = 0  # Reset counter
+                    else:
+                        counter += 1
+                        if counter >= patience:
+                            print("Early stopping triggered!")
+                            break  # Stop training
 
-        # Training Loss
-        loss_fn = nn.MSELoss()
-        model.eval()
-        train_loss = 0.0
-        with torch.no_grad():
-            for inputs, labels in train_loader:
-                y_train_pred = model(inputs)  # Forward pass
-                loss = loss_fn(y_train_pred.squeeze(), labels)  # Compute loss
-                train_loss += loss.item()
+                # Training Loss
+                model.eval()
+                fold_train_loss = 0.0
+                with torch.no_grad():
+                    for inputs, labels in train_loader:
+                        y_train_pred = model(inputs)  # Forward pass
+                        loss = criterion(y_train_pred.squeeze(), labels)  # Compute loss
+                        fold_train_loss += loss.item()
+                fold_train_loss /= len(train_loader)
 
-        train_loss /= len(train_loader)
-        print(f"Training Loss: {train_loss:.4f}")
+                # Validation Loss
+                fold_val_loss = 0.0
+                with torch.no_grad():
+                    for inputs, labels in val_loader:
+                        y_val_pred = model(inputs)  # Forward pass
+                        loss = criterion(y_val_pred.squeeze(), labels)  # Compute loss
+                        fold_val_loss += loss.item()
+                fold_val_loss /= len(val_loader)
 
-        # Test Loss
-        test_loss = 0.0
-        with torch.no_grad():
-            for inputs, labels in test_loader:
-                y_test_pred = model(inputs)  # Forward pass
-                loss = loss_fn(y_test_pred.squeeze(), labels)  # Compute loss
-                test_loss += loss.item()
+                # Accumulate total loss for all folds
+                total_train_loss += fold_train_loss
+                total_val_loss += fold_val_loss
 
-        test_loss /= len(train_loader)
-        print(f"Test Loss: {test_loss:.4f}")
+            # Average the total training and validation losses across all folds
+            avg_train_loss = total_train_loss / k
+            avg_val_loss = total_val_loss / k
 
-        with open("layers.txt", 'a') as f:
-            f.write(f"Dim: {dim}, Layers: {num_layers}, Training Loss: {train_loss:.4f}, Test Loss: {test_loss:.4f}\n")
+            models.append(model)
+            train_losses.append(avg_train_loss)
+            val_losses.append(avg_val_loss)
+
+            # Write to file after all folds and epochs are complete
+            with open("tuning.txt", 'a') as f:
+                f.write(f"Dim: {dim}, Layers: {num_layers}, Epochs: {num_epochs}, Dropout: {drop}, Avg Train Loss: {avg_train_loss:.4f}, Avg Val Loss: {avg_val_loss:.4f}\n")
+
+best_index = np.argmin(val_losses)
+best_model = models[best_index]
+
+# Training Loss (after all epochs)
+best_model.eval()
+test_loss = 0.0
+with torch.no_grad():
+    for inputs, labels in test_loader:
+        y_test_pred = best_model(inputs)  # Forward pass
+        loss = criterion(y_test_pred.squeeze(), labels)  # Compute loss
+        test_loss += loss.item()
+test_loss /= len(test_loader)
+# Write to file after all folds and epochs are complete
+with open("tuning.txt", 'a') as f:
+    f.write(f'Best Model Test Error: {test_loss}')
+torch.save(best_model, 'full_model.pth')
