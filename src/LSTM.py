@@ -8,14 +8,11 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader, TensorDataset, Subset
+from torch.utils.data import DataLoader, TensorDataset
 from sklearn.model_selection import train_test_split
 import os
-from sklearn.model_selection import KFold
-
-
-
-
+import matplotlib.pyplot as plt
+import pandas as pd
 
 
 # Download necessary resources from nltk
@@ -50,8 +47,8 @@ for file in file_paths:
 
 
 # Limit the size to the first 10,000 rows
-samples = samples[:10000]
-labels = labels[:10000]
+# samples = samples[:10000]
+# labels = labels[:10000]
 
 
 """
@@ -205,20 +202,21 @@ print(f"Words not found in GloVe: {not_found_count}")
 
 # Split data into training, validation, and test sets
 X_train, X_test, y_train, y_test = train_test_split(padded_post_indices, labels, test_size=0.2, random_state=42)
+X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=0.2, random_state=42)
+
 
 # Convert the data into PyTorch tensors
 X_train_tensor = torch.LongTensor(X_train)  # Shape: (num_train_samples, max_length)
 y_train_tensor = torch.FloatTensor(y_train)  # Shape: (num_train_samples,)
+X_val_tensor = torch.LongTensor(X_val)  # Shape: (num_train_samples, max_length)
+y_val_tensor = torch.FloatTensor(y_val)  # Shape: (num_train_samples,)
 X_test_tensor = torch.LongTensor(X_test)  # Shape: (num_test_samples, max_length)
 y_test_tensor = torch.FloatTensor(y_test)  # Shape: (num_test_samples,)
 
 # Create a TensorDataset and DataLoader for batching
 train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
+val_dataset = TensorDataset(X_val_tensor, y_val_tensor)
 test_dataset = TensorDataset(X_test_tensor, y_test_tensor)
-
-batch_size = 128  # You can adjust this depending on your memory
-train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
 
 # LSTM Model Definition
 class LSTMModel(nn.Module):
@@ -262,55 +260,48 @@ class LSTMModel(nn.Module):
         
         return output
 
-k = 5
-kfold = KFold(n_splits=k)
-
+# Initialize a list to store the data
+results = []
 models = []
-train_losses = []
-val_losses = []
 
 hidden_dims = [32, 64, 128]
-layers = [2, 3]
+layers = [1, 2, 3]
 dropout_list = [0.2, 0.4]
+batch_sizes = [32, 64] 
 
-patience = 5
+patience = 50
 
 for dim in hidden_dims:
     for layer in layers:
         for drop in dropout_list:
-            # Hyperparameters
-            vocab_size = len(vocab) + 1  # +1 for padding token
-            hidden_dim = dim  # Hidden state size for LSTM
-            num_layers = layer
-            output_dim = 1  # For regression, output is a single continuous value
-            learning_rate = 0.001
-            dropout = drop
+            for batch in batch_sizes:
 
-            # Initialize the LSTM model
-            model = LSTMModel(vocab_size=vocab_size, embedding_dim=embedding_dim, hidden_dim=hidden_dim, num_layers=num_layers, output_dim=output_dim, embedding_matrix=embedding_matrix, dropout_prob=dropout)
+                batch_size = batch  # You can adjust this depending on your memory
+                train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+                val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+                test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
-            # Loss function and optimizer
-            criterion = nn.MSELoss()  # Mean Squared Error for regression
-            optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+                # Hyperparameters
+                vocab_size = len(vocab) + 1  # +1 for padding token
+                hidden_dim = dim  # Hidden state size for LSTM
+                num_layers = layer
+                output_dim = 1  # For regression, output is a single continuous value
+                learning_rate = 0.001
+                dropout = drop
 
-            num_epochs = 50 
+                # Initialize the LSTM model
+                model = LSTMModel(vocab_size=vocab_size, embedding_dim=embedding_dim, hidden_dim=hidden_dim, num_layers=num_layers, output_dim=output_dim, embedding_matrix=embedding_matrix, dropout_prob=dropout)
 
-            total_train_loss = 0
-            total_val_loss = 0
+                # Loss function and optimizer
+                criterion = nn.MSELoss()  # Mean Squared Error for regression
+                optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
-            for fold, (train_idx, val_idx) in enumerate(kfold.split(train_dataset)):
-                print(f"Fold {fold+1}/{k}")
-                
-                # Create data loaders for training and validation
-                train_subset = Subset(train_dataset, train_idx)
-                val_subset = Subset(train_dataset, val_idx)
-                train_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=False)
-                val_loader = DataLoader(val_subset, batch_size=batch_size, shuffle=False)
-
-                fold_train_loss = 0.0
-                fold_val_loss = 0.0
+                num_epochs = 5
                 best_val_loss = float('inf')
                 counter = 0
+
+                train_errors = []
+                val_errors = []
 
                 for epoch in range(num_epochs):
                     print(f"Epoch [{epoch+1}/{num_epochs}]")
@@ -340,6 +331,19 @@ for dim in hidden_dims:
                             loss = criterion(y_val_pred.squeeze(), labels)  # Compute loss
                             val_loss += loss.item()
                     val_loss /= len(val_loader)
+
+                    # Training Loss
+                    model.eval()
+                    train_loss = 0.0
+                    with torch.no_grad():
+                        for inputs, labels in train_loader:
+                            y_train_pred = model(inputs)  # Forward pass
+                            loss = criterion(y_train_pred.squeeze(), labels)  # Compute loss
+                            train_loss += loss.item()
+                    train_loss /= len(train_loader)
+
+                    train_errors.append(train_loss)
+                    val_errors.append(val_loss)
                 
                     # Check for early stopping
                     if val_loss < best_val_loss:
@@ -349,44 +353,48 @@ for dim in hidden_dims:
                         counter += 1
                         if counter >= patience:
                             print("Early stopping triggered!")
+                            num_epochs = epoch+1
                             break  # Stop training
 
-                # Training Loss
-                model.eval()
-                fold_train_loss = 0.0
-                with torch.no_grad():
-                    for inputs, labels in train_loader:
-                        y_train_pred = model(inputs)  # Forward pass
-                        loss = criterion(y_train_pred.squeeze(), labels)  # Compute loss
-                        fold_train_loss += loss.item()
-                fold_train_loss /= len(train_loader)
+                epochs = list(range(1, num_epochs+1))
 
-                # Validation Loss
-                fold_val_loss = 0.0
-                with torch.no_grad():
-                    for inputs, labels in val_loader:
-                        y_val_pred = model(inputs)  # Forward pass
-                        loss = criterion(y_val_pred.squeeze(), labels)  # Compute loss
-                        fold_val_loss += loss.item()
-                fold_val_loss /= len(val_loader)
+                # Create the plot
+                plt.plot(epochs, train_errors, label='Training Error', color='blue', marker='o')
+                plt.plot(epochs, val_errors, label='Validation Error', color='red', marker='o')
 
-                # Accumulate total loss for all folds
-                total_train_loss += fold_train_loss
-                total_val_loss += fold_val_loss
+                # Add labels and title
+                plt.xlabel('Epochs')
+                plt.ylabel('Error (MSE)')
+                plt.title(f'Training vs Validation Error (Dim: {dim}, Layers: {num_layers}, Dropout: {drop}, Batch: {batch_size})')
 
-            # Average the total training and validation losses across all folds
-            avg_train_loss = total_train_loss / k
-            avg_val_loss = total_val_loss / k
+                # Show legend
+                plt.legend()
+                plt.savefig(f'results/figures/dim{dim}-layers{num_layers}-dropout{drop}-batch{batch_size}.png')
+                plt.clf()
 
-            models.append(model)
-            train_losses.append(avg_train_loss)
-            val_losses.append(avg_val_loss)
+                # Append the result to the list
+                results.append({
+                    'hidden_dim': dim,
+                    'num_layers': num_layers,
+                    'dropout': drop,
+                    'batch_size': batch_size,
+                    'train_loss': train_loss,
+                    'val_loss': val_loss,
+                })
+                models.append(model)
 
-            # Write to file after all folds and epochs are complete
-            with open("tuning.txt", 'a') as f:
-                f.write(f"Dim: {dim}, Layers: {num_layers}, Epochs: {num_epochs}, Dropout: {drop}, Avg Train Loss: {avg_train_loss:.4f}, Avg Val Loss: {avg_val_loss:.4f}\n")
+# Convert the results list to a pandas DataFrame
+df_results = pd.DataFrame(results)
 
-best_index = np.argmin(val_losses)
+# Write the DataFrame to a CSV file
+df_results.to_csv('model_tuning_results.csv', index=False)
+
+print("Model tuning results have been saved to 'model_tuning_results.csv'.")
+
+for model in models:
+    torch.save(model, f"results/models/dim{dim}-layers{num_layers}-dropout{drop}-batch{batch_size}.pth")
+
+best_index = df_results['val_loss'].idxmin()
 best_model = models[best_index]
 
 # Training Loss (after all epochs)
@@ -399,6 +407,6 @@ with torch.no_grad():
         test_loss += loss.item()
 test_loss /= len(test_loader)
 # Write to file after all folds and epochs are complete
-with open("tuning.txt", 'a') as f:
+with open("results/tuning.txt", 'a') as f:
     f.write(f'Best Model Test Error: {test_loss}')
 torch.save(best_model, 'full_model.pth')
